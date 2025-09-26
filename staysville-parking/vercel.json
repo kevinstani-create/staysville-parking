@@ -1,0 +1,17 @@
+{
+  "functions": {
+    "app/api/webhook/route.ts": {
+      "maxDuration": 10
+    },
+    "app/api/booking/route.ts": {
+      "maxDuration": 15
+    },
+    "app/api/admin/bookings/route.ts": {
+      "maxDuration": 10
+    }
+  },
+  "env": {
+    "POSTGRES_PRISMA_URL": "@postgres_prisma_url",
+    "POSTGRES_URL_NON_POOLING": "@postgres_url_non_pooling"
+  }
+}
