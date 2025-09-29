@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,8 +22,8 @@ interface BookingFormProps {
 
 const LOCATION_NAMES = {
   'jens-zetlitz-gate': 'Jens Zetlitz gate',
-  'saudagata': 'Saudagata',
-  'torbjorn-hornkloves-gate': 'Torbjørn Hornkløves gate'
+  saudagata: 'Saudagata',
+  'torbjorn-hornkloves-gate': 'Torbjørn Hornkløves gate',
 } as const;
 
 export default function BookingForm({ location }: BookingFormProps) {
@@ -55,9 +61,7 @@ export default function BookingForm({ location }: BookingFormProps) {
     try {
       const response = await fetch('/api/booking', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName: formData.fullName,
           email: formData.email,
@@ -70,12 +74,8 @@ export default function BookingForm({ location }: BookingFormProps) {
       });
 
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Booking failed');
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Booking failed');
-      }
-
-      // Redirect to Stripe Checkout
       if (data.url) {
         window.location.href = data.url;
       } else {
@@ -89,20 +89,16 @@ export default function BookingForm({ location }: BookingFormProps) {
   };
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Get today's date for min date validation
   const today = new Date().toISOString().split('T')[0];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <MapPin className="h-8 w-8 text-blue-600" />
@@ -111,17 +107,14 @@ export default function BookingForm({ location }: BookingFormProps) {
                 <p className="text-gray-600">{locationName}</p>
               </div>
             </div>
-            <Button 
-              variant="outline" 
-              onClick={() => router.push('/')}
-            >
+            <Button variant="outline" onClick={() => router.push('/')}>
               Back to Locations
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -131,12 +124,13 @@ export default function BookingForm({ location }: BookingFormProps) {
             <CardDescription>
               Fill in your details to book parking at {locationName}
               {location === 'saudagata' && (
-                <span className="block mt-1 text-amber-600 font-medium">
+                <span className="mt-1 block font-medium text-amber-600">
                   ⚠️ Limited capacity: Maximum 2 cars per overlapping period
                 </span>
               )}
             </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
@@ -148,7 +142,7 @@ export default function BookingForm({ location }: BookingFormProps) {
               {/* Personal Information */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Personal Information</h3>
-                
+
                 <div>
                   <Label htmlFor="fullName">Full Name *</Label>
                   <Input
@@ -177,8 +171,8 @@ export default function BookingForm({ location }: BookingFormProps) {
               {/* Booking Dates */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Booking Dates</h3>
-                
-                <div className="grid md:grid-cols-2 gap-4">
+
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label htmlFor="startDate">Start Date *</Label>
                     <Input
@@ -187,7 +181,9 @@ export default function BookingForm({ location }: BookingFormProps) {
                       required
                       min={today}
                       value={formData.startDate}
-                      onChange={(e) => handleInputChange('startDate', e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange('startDate', e.target.value)
+                      }
                     />
                   </div>
 
@@ -199,14 +195,16 @@ export default function BookingForm({ location }: BookingFormProps) {
                       required
                       min={formData.startDate || today}
                       value={formData.endDate}
-                      onChange={(e) => handleInputChange('endDate', e.target.value)}
+                      onChange={(e) =>
+                        handleInputChange('endDate', e.target.value)
+                      }
                     />
                   </div>
                 </div>
 
                 {nights > 0 && (
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="flex justify-between items-center">
+                  <div className="rounded-lg bg-blue-50 p-4">
+                    <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-600">
                         {nights} night{nights > 1 ? 's' : ''} × 150 NOK
                       </span>
@@ -221,20 +219,18 @@ export default function BookingForm({ location }: BookingFormProps) {
               {/* Vehicle Information */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Vehicle Information</h3>
-                
+
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="noLicensePlate"
                     checked={formData.noLicensePlate}
                     onCheckedChange={(checked) => {
                       handleInputChange('noLicensePlate', checked as boolean);
-                      if (checked) {
-                        handleInputChange('licensePlate', '');
-                      }
+                      if (checked) handleInputChange('licensePlate', '');
                     }}
                   />
                   <Label htmlFor="noLicensePlate" className="text-sm">
-                    I don't have a license plate number yet
+                    I don&apos;t have a license plate number yet
                   </Label>
                 </div>
 
@@ -245,7 +241,12 @@ export default function BookingForm({ location }: BookingFormProps) {
                       id="licensePlate"
                       type="text"
                       value={formData.licensePlate}
-                      onChange={(e) => handleInputChange('licensePlate', e.target.value.toUpperCase())}
+                      onChange={(e) =>
+                        handleInputChange(
+                          'licensePlate',
+                          e.target.value.toUpperCase(),
+                        )
+                      }
                       placeholder="Enter license plate number"
                     />
                   </div>
@@ -271,8 +272,8 @@ export default function BookingForm({ location }: BookingFormProps) {
                     </>
                   )}
                 </Button>
-                
-                <p className="text-xs text-gray-500 text-center mt-2">
+
+                <p className="mt-2 text-center text-xs text-gray-500">
                   You will be redirected to Stripe for secure payment
                 </p>
               </div>
