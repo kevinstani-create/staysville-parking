@@ -1,151 +1,120 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getPool, checkSaudagataCapacity, calculateNights, isValidLocation, LOCATION_NAMES } from '@/lib/db';
+import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-10-16
-});
+// Stripe SDK krever Node.js-runtime (ikke Edge)
+export const runtime = 'nodejs';
 
-// Rate limiting (simple in-memory store)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const stripeSecret = process.env.STRIPE_SECRET_KEY;
+const appUrl =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.VERCEL_URL?.startsWith('http')
+    ? process.env.VERCEL_URL
+    : `https://${process.env.VERCEL_URL}`;
 
-const RATE_LIMIT = 10; // requests per minute
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const stripe = new Stripe(stripeSecret ?? '', /* no apiVersion -> unngår types feil */);
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const userLimit = rateLimitMap.get(ip);
+type LocationSlug = 'jens-zetlitz-gate' | 'saudagata' | 'torbjorn-hornkloves-gate';
 
-  if (!userLimit || now > userLimit.resetTime) {
-    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
+const NOK_PER_NIGHT = 150;
 
-  if (userLimit.count >= RATE_LIMIT) {
-    return false;
-  }
-
-  userLimit.count++;
-  return true;
+function dateDiffInNights(startISO: string, endISO: string): number {
+  if (!startISO || !endISO) return 0;
+  const start = new Date(`${startISO}T00:00:00`);
+  const end = new Date(`${endISO}T00:00:00`);
+  const ms = end.getTime() - start.getTime();
+  const nights = Math.ceil(ms / (1000 * 60 * 60 * 24));
+  return Math.max(0, nights);
 }
 
-export async function POST(request: NextRequest) {
+function isEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+export async function POST(req: Request) {
   try {
-    // Rate limiting
-    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
-    
-    if (!checkRateLimit(ip)) {
+    if (!stripeSecret) {
       return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { status: 429 }
+        { error: 'Missing STRIPE_SECRET_KEY server environment variable' },
+        { status: 500 }
       );
     }
 
-    const body = await request.json();
-    const { 
-      name, 
-      email, 
-      phone, 
-      location, 
-      checkIn, 
-      checkOut, 
-      licensePlate,
-      specialRequests 
-    } = body;
+    const body = (await req.json()) as {
+      fullName: string;
+      email: string;
+      startDate: string; // yyyy-mm-dd
+      endDate: string; // yyyy-mm-dd
+      licensePlate?: string;
+      noLicensePlate?: boolean;
+      location: LocationSlug;
+    };
 
-    // Validation
-    if (!name || !email || !phone || !location || !checkIn || !checkOut || !licensePlate) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    // Valider input enkelt og tydelig
+    if (!body?.fullName || body.fullName.trim().length < 2) {
+      return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
+    }
+    if (!body?.email || !isEmail(body.email)) {
+      return NextResponse.json({ error: 'Valid email is required' }, { status: 400 });
+    }
+    if (!body?.startDate || !body?.endDate) {
+      return NextResponse.json({ error: 'Start and end dates are required' }, { status: 400 });
+    }
+    if (!body?.location) {
+      return NextResponse.json({ error: 'Location is required' }, { status: 400 });
     }
 
-    if (!isValidLocation(location)) {
-      return NextResponse.json(
-        { error: 'Invalid location' },
-        { status: 400 }
-      );
+    const nights = dateDiffInNights(body.startDate, body.endDate);
+    if (nights <= 0) {
+      return NextResponse.json({ error: 'End date must be after start date' }, { status: 400 });
     }
 
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
-    const now = new Date();
+    const totalNok = nights * NOK_PER_NIGHT;
+    const unitAmount = totalNok * 100; // NOK i øre til Stripe
 
-    if (checkInDate < now) {
-      return NextResponse.json(
-        { error: 'Check-in date cannot be in the past' },
-        { status: 400 }
-      );
-    }
+    const description = [
+      `Parking: ${body.location}`,
+      `From ${body.startDate} to ${body.endDate} (${nights} night${nights > 1 ? 's' : ''})`,
+      body.licensePlate ? `Plate: ${body.licensePlate.toUpperCase()}` : `Plate: pending`,
+      `Name: ${body.fullName}`,
+    ].join(' • ');
 
-    if (checkOutDate <= checkInDate) {
-      return NextResponse.json(
-        { error: 'Check-out date must be after check-in date' },
-        { status: 400 }
-      );
-    }
+    const successUrl = `${appUrl}/success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${appUrl}/?cancelled=1`;
 
-    const nights = calculateNights(checkInDate, checkOutDate);
-    
-    // Check capacity for Saudagata location
-    if (location === 'saudagata') {
-      const hasCapacity = await checkSaudagataCapacity(checkInDate, checkOutDate);
-      if (!hasCapacity) {
-        return NextResponse.json(
-          { error: 'No parking spaces available for the selected dates at Saudagata location' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Calculate price (example: 100 NOK per night)
-    const pricePerNight = 100;
-    const totalAmount = nights * pricePerNight;
-
-    // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
       payment_method_types: ['card'],
+      customer_email: body.email,
       line_items: [
         {
+          quantity: 1,
           price_data: {
             currency: 'nok',
+            unit_amount: unitAmount,
             product_data: {
-              name: `Parking at ${LOCATION_NAMES[location]}`,
-              description: `${nights} night${nights > 1 ? 's' : ''} parking from ${checkInDate.toLocaleDateString()} to ${checkOutDate.toLocaleDateString()}`,
+              name: 'Staysville Parking',
+              description,
             },
-            unit_amount: totalAmount * 100, // Stripe expects amount in øre (cents)
           },
-          quantity: 1,
         },
       ],
-      mode: 'payment',
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/booking`,
       metadata: {
-        name,
-        email,
-        phone,
-        location,
-        checkIn: checkInDate.toISOString(),
-        checkOut: checkOutDate.toISOString(),
-        licensePlate,
-        specialRequests: specialRequests || '',
-        nights: nights.toString(),
-        totalAmount: totalAmount.toString(),
+        location: body.location,
+        startDate: body.startDate,
+        endDate: body.endDate,
+        nights: String(nights),
+        licensePlate: body.noLicensePlate ? '' : (body.licensePlate || '').toUpperCase(),
+        fullName: body.fullName,
       },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
     });
 
-    return NextResponse.json({ 
-      sessionId: session.id,
-      url: session.url 
-    });
-
-  } catch (error) {
-    console.error('Booking API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ url: session.url }, { status: 200 });
+  } catch (err: unknown) {
+    console.error('Booking error:', err);
+    const message =
+      err && typeof err === 'object' && 'message' in err ? String((err as any).message) : 'Error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
