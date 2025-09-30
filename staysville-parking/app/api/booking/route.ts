@@ -3,7 +3,7 @@ import { getPool, checkSaudagataCapacity, calculateNights, isValidLocation, LOCA
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
- '2025-08-27.basil',
+ apiVersion: '2025-08-27.basil',
 });
 
 // Rate limiting (simple in-memory store)
