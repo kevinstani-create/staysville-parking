@@ -1,40 +1,23 @@
-import Link from 'next/link'
+"use client";
 
-type Props = {
-  searchParams?: { session_id?: string }
-}
+import { useEffect, useState } from "react";
 
-/**
- * Simple server component. No unused imports, no client code needed.
- */
-export default function SuccessPage({ searchParams }: Props) {
-  const sessionId = searchParams?.session_id
+export default function SuccessPage() {
+  const [message, setMessage] = useState("Processing your booking…");
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setMessage("✅ Payment successful! Your parking is booked.");
+    }, 1200);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <section className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="bg-white rounded-xl shadow p-8">
-          <h1 className="text-2xl font-bold text-gray-900">Payment successful 🎉</h1>
-          <p className="mt-3 text-gray-700">
-            Thank you! Your parking booking has been received and the payment was completed.
-          </p>
-
-          {sessionId ? (
-            <p className="mt-2 text-sm text-gray-500">
-              Stripe session: <span className="font-mono">{sessionId}</span>
-            </p>
-          ) : null}
-
-          <div className="mt-8">
-            <Link
-              href="/"
-              className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-            >
-              Back to home
-            </Link>
-          </div>
-        </div>
+    <main className="min-h-screen flex items-center justify-center bg-green-50">
+      <section className="bg-white shadow-md rounded-lg p-8 max-w-md w-full text-center">
+        <h1 className="text-2xl font-bold text-green-700 mb-3">Payment Success</h1>
+        <p className="text-gray-700">{message}</p>
       </section>
     </main>
-  )
+  );
 }
