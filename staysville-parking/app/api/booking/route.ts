@@ -36,9 +36,8 @@ function nightsBetween(startISO: string, endISO: string): number {
 export async function POST(req: Request) {
   try {
     const json = (await req.json()) as unknown;
-
-    // narrow and validate without using `any`
     const body = json as Partial<BookingRequest>;
+
     if (
       !body ||
       typeof body.fullName !== "string" ||
